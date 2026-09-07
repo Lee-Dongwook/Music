@@ -1,45 +1,23 @@
-import uuid
-import asyncio
+import os
 from fastapi import FastAPI, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from fastapi.staticfiles import StaticFiles
+from app.routers import music
 
-app = FastAPI(title="Music AI Backend")
-
+app = FastAPI(title="Music AI Backend", version="1.0.0")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-tasks = {}
+os.makedirs("storage", exist_ok=True)
+app.mount("/static", StaticFiles(directory="storage"), name="static")
 
-class GenerateRequest(BaseModel):
-    prompt: str
-    lyrics: str | None = None
+app.include_router(music.router)
 
-async def mock_generate_audio(task_id: str):
-    tasks[task_id]["status"] = "processing"
-    await asyncio.sleep(5)
-    tasks[task_id]["status"] = "completed"
-    tasks[task_id]["audio_url"] = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"
-
-@app.post("/api/generate")
-async def generate_music(req: GenerateRequest, background_tasks: BackgroundTasks):
-    task_id = str(uuid.uuid4())
-    tasks[task_id] = {
-        "status": "pending",
-        "prompt": req.prompt,
-        "audio_url": None
-    }
-    background_tasks.add_task(mock_generate_audio, task_id)
-    return {"task_id": task_id, "status": "pending"}
-
-@app.get("/api/status/{task_id}")
-async def get_status(task_id: str):
-    task = tasks.get(task_id)
-    if not task:
-        return {"error": "Task not found"}, 404
-    return task
+@app.get("/")
+def read_root():
+    return {"message": "Music AI generation API is running"}
