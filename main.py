@@ -1,8 +1,11 @@
 import os
-from fastapi import FastAPI, BackgroundTasks
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from app.database import engine, Base
 from app.routers import music
+
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Music AI Backend", version="1.0.0")
 app.add_middleware(
