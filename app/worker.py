@@ -4,6 +4,7 @@ from celery import Celery
 from app.database import SessionLocal
 from app.models import MusicTaskModel
 from app.schemas import TaskStatus
+from app.services.audio_engine import get_audio_engine
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
@@ -12,17 +13,14 @@ celery_app = Celery(
     broker=REDIS_URL,
     backend=REDIS_URL
 )
-
-celery_app.config.update(
-    task_serializer="json",
-    result_serializer="json",
-    accept_content=["json"],
-    timezone="Asia/Seoul",
-    enable_utc=True
-)
+audio_engine = None
 
 @celery_app.task(name="generate_music_task")
 def process_music_generation_task(task_id: str):
+    global audio_engine
+    if audio_engine is None:
+        audio_engine = get_audio_engine()
+
     db = SessionLocal()
     try:
         task = db.query(MusicTaskModel).filter(MusicTaskModel.id == task_id).first()
@@ -32,13 +30,17 @@ def process_music_generation_task(task_id: str):
         task.status = TaskStatus.PROCESSING
         db.commit()
 
-        time.sleep(10)
+        storage_dir = "storage"
+        os.makedirs(storage_dir, exist_ok=True)
+        filename = f"{task.id}.wav"
+        file_path = os.path.join(storage_dir, filename)
 
+        audio_engine.generate(prompt=task.prompt, output_path=file_path)
         task.status = TaskStatus.COMPLETED
-        task.audio_url = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"
+        task.audio_url = f"http://localhost:8000/static/{filename}"
         task.cover_image_url = "https://picsum.photos/400/400"
         db.commit()
-        
+
     except Exception as e:
         db.rollback()
         task = db.query(MusicTaskModel).filter(MusicTaskModel.id == task_id).first()
